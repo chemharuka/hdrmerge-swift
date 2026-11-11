@@ -76,6 +76,10 @@ final class TIFFBuilder {
         add(tag, .ascii, d, count: d.count)
     }
 
+    func addRaw(_ tag: UInt16, type: UInt16, count: Int, data: [UInt8]) {
+        entries.append(TIFFWriteEntry(tag: tag, type: type, count: count, data: data))
+    }
+
     func addBytes(_ tag: UInt16, _ values: [UInt8]) {
         add(tag, .byte, values, count: values.count)
     }
@@ -198,7 +202,7 @@ public enum DNGWriter {
         main.addLongs(273, [0])                                  // StripOffsets, patched below
         main.addLongs(278, [UInt32(h)])
         main.addLongs(279, [UInt32(pixelData.count)])
-        main.addBytes(33421, [UInt8(merged.cfaRows), UInt8(merged.cfaCols)])
+        main.addShorts(33421, [UInt16(merged.cfaRows), UInt16(merged.cfaCols)])
         main.addBytes(33422, merged.cfaPattern)
         main.addBytes(50710, [0, 1, 2])
         main.addShorts(50711, [1])                               // CFALayout: rectangular
@@ -228,12 +232,19 @@ public enum DNGWriter {
             main.addShorts(50779, [UInt16(source.calibrationIlluminant2)])
         }
 
+        main.addShorts(274, [UInt16(max(1, source.orientation))])
+        main.addASCII(305, "hdrmerge-swift")
+
         let exif = TIFFBuilder()
         if source.exposureTime > 0 {
             let num = UInt32((source.exposureTime * 1_000_000).rounded())
             exif.addRationals(33434, [(num, 1_000_000)])
         }
         if source.iso > 0 { exif.addShorts(34855, [UInt16(source.iso.rounded())]) }
+        // Everything else the camera wrote (timestamps, lens, exposure program, ...).
+        for e in source.exifTags where e.tag != 33434 && e.tag != 34855 && e.tag != 274 {
+            exif.addRaw(e.tag, type: e.type, count: e.count, data: e.data)
+        }
 
         var data = main.build(pixelData: pixelData, exif: exif)
 

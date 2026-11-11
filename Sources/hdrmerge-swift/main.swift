@@ -89,7 +89,7 @@ case "synth":
 
 case "merge":
     var outPath: String?
-    var bits = 32
+    var bits = 16
     var feather = 3
     var white: Int?
     var inputs: [String] = []
@@ -111,7 +111,10 @@ case "merge":
         let merged = try HDRMergeCore.merge(frames: frames, options: opts)
         for line in merged.report { print(line) }
         print("merged \(merged.width)x\(merged.height) from \(frames.count) frame(s)")
-        try DNGWriter.write(merged, source: frames[0], bits: bits, to: URL(fileURLWithPath: out))
+        // EXIF/DNG metadata is copied from the least exposed frame, like upstream HDRMerge.
+        let meta = frames.min { $0.exposureTime * $0.iso < $1.exposureTime * $1.iso } ?? frames[0]
+        print("metadata from \(meta.url.lastPathComponent)")
+        try DNGWriter.write(merged, source: meta, bits: bits, to: URL(fileURLWithPath: out))
         print("wrote \(out)")
     } catch {
         FileHandle.standardError.write(Data("\(error)\n".utf8))

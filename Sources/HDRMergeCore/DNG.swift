@@ -66,6 +66,9 @@ public struct RawFrame {
     public let colorMatrix2: [Double]?
     public let calibrationIlluminant1: Int
     public let calibrationIlluminant2: Int
+    /// Scalar EXIF tags copied verbatim from the source's Exif IFD.
+    public let exifTags: [(tag: UInt16, type: UInt16, count: Int, data: [UInt8])]
+    public let orientation: Int
 
     public var width: Int { activeWidth }
     public var height: Int { activeHeight }
@@ -185,6 +188,18 @@ public enum DNGReader {
         }
         let make = metaIFDs.compactMap { $0[271]?.ascii }.first { !$0.isEmpty } ?? ""
         let model = metaIFDs.compactMap { $0[272]?.ascii }.first { !$0.isEmpty } ?? ""
+        // Whitelisted scalar EXIF tags (no offsets, so they stay valid when moved).
+        let scalarExif: Set<UInt16> = [274, 305, 306, 33437, 34850, 34855, 36864, 36867, 36868,
+                                       37380, 37381, 37383, 37384, 37385, 37386, 37396,
+                                       41986, 41987, 41989, 42033, 42034, 42035, 42036, 42037]
+        var exifTags: [(tag: UInt16, type: UInt16, count: Int, data: [UInt8])] = []
+        for ifd in metaIFDs {
+            for (tag, e) in ifd where scalarExif.contains(tag) {
+                if exifTags.contains(where: { $0.tag == tag }) { continue }
+                exifTags.append((tag, e.type.rawValue, e.count, e.raw))
+            }
+        }
+        let orientation = metaIFDs.compactMap { $0[274]?.firstInt }.first ?? 1
         let exposureTime = metaDouble(33434)
         let iso = metaDouble(34855)
         var neutral = [Double]()
@@ -207,7 +222,9 @@ public enum DNGReader {
                         colorMatrix1: metaIFDs.compactMap { $0[50721]?.doubles }.first { $0.count == 9 },
                         colorMatrix2: metaIFDs.compactMap { $0[50722]?.doubles }.first { $0.count == 9 },
                         calibrationIlluminant1: metaIFDs.compactMap { $0[50778]?.firstInt }.first ?? 21,
-                        calibrationIlluminant2: metaIFDs.compactMap { $0[50779]?.firstInt }.first ?? 21)
+                        calibrationIlluminant2: metaIFDs.compactMap { $0[50779]?.firstInt }.first ?? 21,
+                        exifTags: exifTags.sorted { $0.tag < $1.tag },
+                        orientation: orientation)
     }
 
     static func decodePixels(tiff: TIFFFile, ifd e: IFD,
