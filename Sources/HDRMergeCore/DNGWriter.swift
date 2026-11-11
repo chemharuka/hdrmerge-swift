@@ -159,8 +159,9 @@ final class TIFFBuilder {
 
 public enum DNGWriter {
     /// `bits`: 16 (integer) or 32 (float).
-    public static func write(_ merged: MergedImage, source: RawFrame,
-                             bits: Int, to url: URL) throws {
+    /// Encode the merged mosaic into DNG bytes. Hosts write the result
+    /// atomically; `write(...)` is the convenience wrapper.
+    public static func render(_ merged: MergedImage, source: RawFrame, bits: Int) throws -> Data {
         let w = merged.width, h = merged.height
         var pixelData: [UInt8]
         let bytesPerSample = bits == 32 ? 4 : 2
@@ -280,6 +281,11 @@ public enum DNGWriter {
                 data[p + 11] = UInt8((pixelOffset >> 24) & 0xFF)
             }
         }
-        try data.write(to: url)
+        return data
+    }
+
+    public static func write(_ merged: MergedImage, source: RawFrame,
+                             bits: Int, to url: URL) throws {
+        try render(merged, source: source, bits: bits).write(to: url)
     }
 }

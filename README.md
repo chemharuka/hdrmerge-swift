@@ -52,13 +52,35 @@ swift build -c release
 No third-party dependencies: the RAW path is pure Swift (no LibRaw), so the
 binary has no runtime deps beyond the system frameworks.
 
+## 给宿主程序调用（Photons 等）
+
+二进制是**独立进程**，宿主用 `Process` 起它、传路径、读 JSON，不链接任何东西——
+许可上就是 GPLv3 与 MIT 的「聚合」，见 `LICENSE-SCOPE.md`。
+
+* 协议规范：`PROTOCOL.md`（`--json` 单对象输出、稳定 `error.code`、`--progress` NDJSON、原子写盘、退出码）
+* Photons 侧客户端：`Host/Photons/HDRMergeClient.swift`（**MIT**，直接丢进 PhotonsCore）
+* 安装到 Photons 找得到的位置：`./scripts/install-to-photons.sh --in-app`
+
+```swift
+let client = try HDRMergeClient()
+guard try client.protocolVersion() == 1 else { throw … }
+let result = try client.merge(frameURLs, to: outURL,
+                              options: .init(bits: 16, headroom: 4),
+                              progress: { print($0) })
+// result.width / .height / .offsets / .metadataFrom / .report
+```
+
 ## Commands
 
 ```
-inspect <file.dng>...              print geometry, CFA pattern, black/white, EXIF exposure
+capabilities [--json]              protocol version + feature list (host negotiation)
+inspect <file.dng>... [--json]     print geometry, CFA pattern, black/white, EXIF exposure
 decode  <in.dng> <out.pgm>         16-bit PGM of the raw mosaic (used as a decoder oracle)
 merge   -o out.dng [options] ...   merge 1..n frames into one CFA DNG
-        -b 16|32                   output bits per sample (default 32 = float DNG)
+        -b 16|32                   output bits per sample (default 16 = integer DNG)
+        --headroom N               container top = N× input white (16-bit: 4 = bit-exact, +2 stops)
+        --metadata-from PATH       take EXIF from this frame instead of the least exposed one
+        --json / --progress        host protocol / NDJSON progress on stderr
         --feather N                mask feather radius (default 3)
         --white N                  override the white/saturation level
 synth   <in> <out> <divisor> [dx dy]   test aid: fake a shorter exposure, optionally shifted
