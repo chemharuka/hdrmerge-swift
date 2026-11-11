@@ -8,7 +8,7 @@
 set -e
 
 APP="${PHOTONS_APP:-$HOME/Documents/GitHub/Photons/.build/Photons.app}"
-DEST="/usr/local/bin"
+if [ -w /opt/homebrew/bin ]; then DEST="/opt/homebrew/bin"; else DEST="/usr/local/bin"; fi
 
 if [ "$1" = "--in-app" ]; then
     if [ ! -d "$APP" ]; then

@@ -297,7 +297,10 @@ let progress = ProgressReporter(enabled: p.progress)
 do {
     let response: Response
     switch p.command {
-    case .capabilities: response = runCapabilities()
+    case .capabilities:
+        // Machine and human get the same payload; only the envelope differs.
+        response = runCapabilities()
+        if !p.json { response.emit() }
     case .inspect: response = try runInspect(p, progress)
     case .merge: response = try runMerge(p, progress)
     case .decode: response = try runDecode(p)
