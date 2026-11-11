@@ -18,10 +18,16 @@ import Foundation
 public struct MergeOptions {
     public var featherRadius: Int
     public var customWhiteLevel: Int?
+    /// Reserve `headroom × input white level` as the top of the output container.
+    /// 1 = upstream behaviour (peak is normalised to white). 4 packs the input's
+    /// scale unchanged into a 16-bit container (65535/4 = 16383) and uses the
+    /// spare top two stops for recovered highlights.
+    public var headroom: Double
 
-    public init(featherRadius: Int = 3, customWhiteLevel: Int? = nil) {
+    public init(featherRadius: Int = 3, customWhiteLevel: Int? = nil, headroom: Double = 1) {
         self.featherRadius = featherRadius
         self.customWhiteLevel = customWhiteLevel
+        self.headroom = headroom
     }
 }
 
@@ -364,15 +370,26 @@ public enum HDRMergeCore {
             }
         }
 
-        // 10. Rescale to the full white range and restore the black level.
-        let mult = peak > 0 ? (Double(white) - black) / Double(peak) : 1
+        // 10. Rescale and restore the black level.
+        //   headroom == 1  -> normalise the peak to the white level (upstream)
+        //   headroom >  1  -> keep the input scale and use the top of the
+        //                     container for `headroom × white` of headroom
+        let inWhite = Double(first.whiteLevel)
+        let outWhite: Double = options.headroom > 1 ? 65535 : Double(white)
+        let mult: Double
+        if options.headroom > 1 {
+            let span = (inWhite - black) * options.headroom
+            mult = span > 0 ? (outWhite - black) / span : 1
+        } else {
+            mult = peak > 0 ? (Double(white) - black) / Double(peak) : 1
+        }
         report.append(String(format: "peak %.1f, black %.1f, white %d, mult %.4f", Double(peak), black, white, mult))
         for i in 0..<out.count {
             out[i] = Float(Double(out[i]) * mult + black)
         }
 
         return MergedImage(width: cw, height: ch, values: out,
-                           black: black, white: white,
+                           black: black, white: Int(outWhite),
                            cfaPattern: first.cfaPattern,
                            cfaRows: first.cfaRows, cfaCols: first.cfaCols,
                            offsets: planes.map { ($0.dx, $0.dy) },

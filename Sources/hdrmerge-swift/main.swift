@@ -92,6 +92,7 @@ case "merge":
     var bits = 16
     var feather = 3
     var white: Int?
+    var headroom = 1.0
     var inputs: [String] = []
     var i = 1
     while i < args.count {
@@ -100,13 +101,14 @@ case "merge":
         case "-b": bits = Int(args[i + 1]) ?? 32; i += 2
         case "--feather": feather = Int(args[i + 1]) ?? 3; i += 2
         case "--white": white = Int(args[i + 1]); i += 2
+        case "--headroom": headroom = Double(args[i + 1]) ?? 1; i += 2
         default: inputs.append(args[i]); i += 1
         }
     }
     guard let out = outPath, inputs.count >= 1 else { usage(); exit(2) }
     do {
         let frames = try inputs.map { try DNGReader.read(url: URL(fileURLWithPath: $0)) }
-        var opts = MergeOptions(featherRadius: feather, customWhiteLevel: white)
+        var opts = MergeOptions(featherRadius: feather, customWhiteLevel: white, headroom: headroom)
         opts.featherRadius = feather
         let merged = try HDRMergeCore.merge(frames: frames, options: opts)
         for line in merged.report { print(line) }
