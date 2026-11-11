@@ -12,6 +12,8 @@ hdrmerge-swift inspect out.dng
 License: **GPL-3.0-or-later** (see `LICENSE`). HDRMerge is © 2012 Javier Celaya;
 this port keeps the same license and the same algorithm structure.
 
+仓库：<https://github.com/chemharuka/hdrmerge-swift>
+
 ## Status
 
 | Piece | State |

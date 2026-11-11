@@ -71,6 +71,12 @@ public struct HDRMergeFailure: Error, Sendable, Equatable, CustomStringConvertib
     public let message: String
     public let exitCode: Int32?
 
+    public init(code: String, message: String, exitCode: Int32?) {
+        self.code = code
+        self.message = message
+        self.exitCode = exitCode
+    }
+
     public var description: String { "\(code): \(message)" }
 
     /// Human-facing hint for the codes we know about.
