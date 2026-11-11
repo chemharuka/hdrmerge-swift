@@ -62,6 +62,10 @@ binary has no runtime deps beyond the system frameworks.
 * 协议规范：`PROTOCOL.md`（`--json` 单对象输出、稳定 `error.code`、`--progress` NDJSON、原子写盘、退出码）
 * Photons 侧客户端：`Host/Photons/HDRMergeClient.swift`（**MIT**，直接丢进 PhotonsCore）
 * 安装到 Photons 找得到的位置：`./scripts/install-to-photons.sh --in-app`
+  （装到 `/opt/homebrew/bin` 用不带参数的那条；Photons 的 `make app` 也会自动把它拷进 bundle）
+
+在 Photons 里就是 **文件 ▸ 合并 HDR DNG…（⇧⌘M）**：选中 2 张以上 DNG → 合并 → 结果以
+`<最暗帧名>-merged.dng` 落在源目录 → 自动导入库并选中。工具没装时该菜单项置灰。
 
 ```swift
 let client = try HDRMergeClient()
