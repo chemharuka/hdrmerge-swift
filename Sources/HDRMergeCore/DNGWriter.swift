@@ -213,9 +213,19 @@ public enum DNGWriter {
         main.addLongs(50717, [UInt32(merged.white)])
         main.addBytes(50706, [1, 4, 0, 0])
         main.addBytes(50707, [1, 1, 0, 0])
-        main.addASCII(50708, "\(source.make) \(source.model)".trimmingCharacters(in: .whitespaces))
+        if !source.rawMeta.contains(where: { $0.tag == 50708 }) {
+            main.addASCII(50708, "\(source.make) \(source.model)".trimmingCharacters(in: .whitespaces))
+        }
         main.addLongs(50719, [0, 0])
         main.addLongs(50720, [UInt32(w), UInt32(h)])
+        for e in source.rawMeta {
+            switch e.tag {
+            case 50708: main.addRaw(50708, type: e.type, count: e.count, data: e.data)
+            case 50721: main.addRaw(50721, type: e.type, count: e.count, data: e.data)
+            case 50722: main.addRaw(50722, type: e.type, count: e.count, data: e.data)
+            default: break
+            }
+        }
         if !source.make.isEmpty { main.addASCII(271, source.make) }
         if !source.model.isEmpty { main.addASCII(272, source.model) }
         if source.asShotNeutral.count >= 3 {
@@ -223,11 +233,13 @@ public enum DNGWriter {
                 (UInt32((max(0, $0) * 1_000_000).rounded()), 1_000_000)
             })
         }
-        if let cm = source.colorMatrix1, cm.count == 9 {
+        if let cm = source.colorMatrix1, cm.count == 9,
+           !source.rawMeta.contains(where: { $0.tag == 50721 }) {
             main.addSRationals(50721, cm)
             main.addShorts(50778, [UInt16(source.calibrationIlluminant1)])
         }
-        if let cm = source.colorMatrix2, cm.count == 9 {
+        if let cm = source.colorMatrix2, cm.count == 9,
+           !source.rawMeta.contains(where: { $0.tag == 50722 }) {
             main.addSRationals(50722, cm)
             main.addShorts(50779, [UInt16(source.calibrationIlluminant2)])
         }
@@ -235,6 +247,10 @@ public enum DNGWriter {
         main.addShorts(274, [UInt16(max(1, source.orientation))])
         main.addASCII(305, "hdrmerge-swift")
         if !source.dateTime.isEmpty { main.addASCII(306, source.dateTime) }
+
+        for e in source.extraIFD0 {
+            main.addRaw(e.tag, type: e.type, count: e.count, data: e.data)
+        }
 
         let exif = TIFFBuilder()
         if source.exposureTime > 0 {

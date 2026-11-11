@@ -64,10 +64,14 @@ public struct RawFrame {
     public let asShotNeutral: [Double]
     public let colorMatrix1: [Double]?
     public let colorMatrix2: [Double]?
+    /// Verbatim bytes of ColorMatrix1/2 and UniqueCameraModel, to avoid re-encoding.
+    public let rawMeta: [(tag: UInt16, type: UInt16, count: Int, data: [UInt8])]
     public let calibrationIlluminant1: Int
     public let calibrationIlluminant2: Int
     /// Scalar EXIF tags copied verbatim from the source's Exif IFD.
     public let exifTags: [(tag: UInt16, type: UInt16, count: Int, data: [UInt8])]
+    /// All other IFD0 tags from the source, to be copied verbatim.
+    public let extraIFD0: [(tag: UInt16, type: UInt16, count: Int, data: [UInt8])]
     public let dateTime: String
     public let orientation: Int
 
@@ -190,13 +194,12 @@ public enum DNGReader {
         let make = metaIFDs.compactMap { $0[271]?.ascii }.first { !$0.isEmpty } ?? ""
         let model = metaIFDs.compactMap { $0[272]?.ascii }.first { !$0.isEmpty } ?? ""
         // Whitelisted scalar EXIF tags (no offsets, so they stay valid when moved).
-        let scalarExif: Set<UInt16> = [33437, 34850, 34855, 36864, 36867, 36868,
-                                       36880, 36881, 36882, 37520, 37521, 37522,
-                                       37380, 37381, 37383, 37384, 37385, 37386, 37396,
-                                       41986, 41987, 41989, 42033, 42034, 42035, 42036, 42037]
+        let scalarExif: Set<UInt16> = []
+        // Copy every Exif tag except the ones we regenerate and offset-bearing pointers.
+        let skipExif: Set<UInt16> = [34665, 37500]   // ExifIFD pointer, MakerNote
         var exifTags: [(tag: UInt16, type: UInt16, count: Int, data: [UInt8])] = []
         for ifd in metaIFDs {
-            for (tag, e) in ifd where scalarExif.contains(tag) {
+            for (tag, e) in ifd where (scalarExif.isEmpty || scalarExif.contains(tag)) && !skipExif.contains(tag) {
                 if exifTags.contains(where: { $0.tag == tag }) { continue }
                 exifTags.append((tag, e.type.rawValue, e.count, e.raw))
             }
@@ -220,12 +223,25 @@ public enum DNGReader {
                         pixels: pixels,
                         make: make, model: model,
                         exposureTime: exposureTime, iso: iso,
-                        asShotNeutral: neutral.isEmpty ? [1, 1, 1] : neutral,
-                        colorMatrix1: metaIFDs.compactMap { $0[50721]?.doubles }.first { $0.count == 9 },
+                        asShotNeutral: neutral.isEmpty ? [1, 1, 1] : neutral,                        colorMatrix1: metaIFDs.compactMap { $0[50721]?.doubles }.first { $0.count == 9 },
                         colorMatrix2: metaIFDs.compactMap { $0[50722]?.doubles }.first { $0.count == 9 },
+                        rawMeta: metaIFDs.compactMap { ifd in
+                            [UInt16(50708), UInt16(50721), UInt16(50722)].compactMap { t in
+                                guard let e = ifd[t] else { return nil }
+                                return (t, e.type.rawValue, e.count, e.raw)
+                            }
+                        }.first { !$0.isEmpty } ?? [],
                         calibrationIlluminant1: metaIFDs.compactMap { $0[50778]?.firstInt }.first ?? 21,
                         calibrationIlluminant2: metaIFDs.compactMap { $0[50779]?.firstInt }.first ?? 21,
                         exifTags: exifTags.sorted { $0.tag < $1.tag },
+                        extraIFD0: mainIFD.compactMap { (t, e) in
+                            let ours: Set<UInt16> = [254, 256, 257, 258, 259, 262, 271, 272, 273, 274,
+                                                     277, 278, 279, 284, 305, 306, 330, 339, 34665, 34853,
+                                                     33421, 33422, 50706, 50707, 50708, 50710, 50711, 50713,
+                                                     50714, 50717, 50719, 50720, 50721, 50722, 50728]
+                            guard !ours.contains(t) else { return nil }
+                            return (t, e.type.rawValue, e.count, e.raw)
+                        }.sorted { $0.tag < $1.tag },
                         dateTime: metaIFDs.compactMap { $0[306]?.ascii }.first { !$0.isEmpty } ?? "",
                         orientation: orientation)
     }
