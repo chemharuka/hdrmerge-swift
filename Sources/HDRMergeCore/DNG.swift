@@ -70,6 +70,8 @@ public struct RawFrame {
     public let calibrationIlluminant2: Int
     /// Scalar EXIF tags copied verbatim from the source's Exif IFD.
     public let exifTags: [(tag: UInt16, type: UInt16, count: Int, data: [UInt8])]
+    /// GPS IFD entries, copied verbatim so 34853 stays valid.
+    public let gpsTags: [(tag: UInt16, type: UInt16, count: Int, data: [UInt8])]
     /// All other IFD0 tags from the source, to be copied verbatim.
     public let extraIFD0: [(tag: UInt16, type: UInt16, count: Int, data: [UInt8])]
     public let dateTime: String
@@ -234,6 +236,13 @@ public enum DNGReader {
                         calibrationIlluminant1: metaIFDs.compactMap { $0[50778]?.firstInt }.first ?? 21,
                         calibrationIlluminant2: metaIFDs.compactMap { $0[50779]?.firstInt }.first ?? 21,
                         exifTags: exifTags.sorted { $0.tag < $1.tag },
+                        gpsTags: (mainIFD[34853]?.firstInt).flatMap { off -> [(UInt16, UInt16, Int, [UInt8])]? in
+                            guard off > 0, let ifd = try? tiff.ifd(at: off) else { return nil }
+                            return ifd.keys.sorted().map { t -> (UInt16, UInt16, Int, [UInt8]) in
+                                let e = ifd[t]!
+                                return (t, e.type.rawValue, e.count, e.raw)
+                            }
+                        } ?? [],
                         extraIFD0: mainIFD.compactMap { (t, e) in
                             let ours: Set<UInt16> = [254, 256, 257, 258, 259, 262, 271, 272, 273, 274,
                                                      277, 278, 279, 284, 305, 306, 330, 339, 34665, 34853,

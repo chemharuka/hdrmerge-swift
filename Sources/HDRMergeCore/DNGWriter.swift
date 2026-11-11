@@ -84,11 +84,13 @@ final class TIFFBuilder {
         add(tag, .byte, values, count: values.count)
     }
 
-    /// Serialise: header + IFD + out-of-line values + pixel data, with an
-    /// optional Exif IFD placed right after the main IFD.
-    func build(pixelData: [UInt8], exif: TIFFBuilder?) -> Data {
+    /// Serialise: header + main IFD + any number of pointer IFDs (Exif, GPS) + pixel data.
+    func build(pixelData: [UInt8], extras: [(pointerTag: UInt16, builder: TIFFBuilder)]) -> Data {
         var main = entries
-        if exif != nil { main.append(TIFFWriteEntry(tag: 34665, type: 4, count: 1, data: [])) }
+        for extra in extras {
+            main.append(TIFFWriteEntry(tag: extra.pointerTag, type: 4, count: 1,
+                                       data: [0, 0, 0, 0]))
+        }
         main.sort { $0.tag < $1.tag }
 
         func valuesSize(_ list: [TIFFWriteEntry]) -> Int {
@@ -97,25 +99,31 @@ final class TIFFBuilder {
             return total
         }
 
-        let ifdOffset = 8
         let mainIFDSize = 2 + main.count * 12 + 4
-        let mainValuesOffset = ifdOffset + mainIFDSize
-        let mainValuesSize = valuesSize(main)
-
-        let exifOffset = mainValuesOffset + mainValuesSize
-        let exifSize = exif.map { 2 + $0.entries.count * 12 + 4 } ?? 0
-        let exifValuesOffset = exifOffset + exifSize
-        let exifValuesSize = exif.map { valuesSize($0.entries) } ?? 0
-
-        var pixelOffset = exifValuesOffset + exifValuesSize
+        var offsets: [(tag: UInt16, ifd: Int, values: Int, size: Int, entries: [TIFFWriteEntry])] = []
+        var cursor = 8 + mainIFDSize + valuesSize(main)
+        for extra in extras {
+            let list = extra.builder.entries.sorted { $0.tag < $1.tag }
+            let size = 2 + list.count * 12 + 4
+            offsets.append((extra.pointerTag, cursor, cursor + size, size, list))
+            cursor += size + valuesSize(list)
+        }
+        var pixelOffset = cursor
         if pixelOffset % 4 != 0 { pixelOffset += 4 - pixelOffset % 4 }
 
         var out = [UInt8](repeating: 0, count: pixelOffset)
-        out[0] = 0x49; out[1] = 0x49   // "II"
-        out[2] = 42; out[3] = 0
-        out[4] = UInt8(ifdOffset & 0xFF); out[5] = 0; out[6] = 0; out[7] = 0
+        out[0] = 0x49; out[1] = 0x49; out[2] = 42; out[3] = 0
+        out[4] = 8; out[5] = 0; out[6] = 0; out[7] = 0
 
-        var cursor = mainValuesOffset
+        // Patch the pointer entries with the offsets computed above.
+        main = main.map { e in
+            guard let hit = offsets.first(where: { $0.tag == e.tag }) else { return e }
+            var d = [UInt8](repeating: 0, count: 4)
+            let v = UInt32(hit.ifd)
+            for b in 0..<4 { d[b] = UInt8((v >> (8 * UInt32(b))) & 0xFF) }
+            return TIFFWriteEntry(tag: e.tag, type: 4, count: 1, data: d)
+        }
+
         func writeIFD(_ list: [TIFFWriteEntry], at offset: Int, valuesAt: Int) {
             var c = valuesAt
             out[offset] = UInt8(list.count & 0xFF)
@@ -139,26 +147,13 @@ final class TIFFBuilder {
             for b in 0..<4 { out[next + b] = 0 }
         }
 
-        // Patch the Exif pointer (it is inline, type LONG).
-        main = main.map { e in
-            guard e.tag == 34665 else { return e }
-            var d = [UInt8](repeating: 0, count: 4)
-            let v = UInt32(exifOffset)
-            for b in 0..<4 { d[b] = UInt8((v >> (8 * UInt32(b))) & 0xFF) }
-            return TIFFWriteEntry(tag: e.tag, type: e.type, count: 1, data: d)
-        }
-
-        writeIFD(main, at: ifdOffset, valuesAt: mainValuesOffset)
-        _ = cursor
-        if let exif = exif {
-            writeIFD(exif.entries.sorted { $0.tag < $1.tag }, at: exifOffset, valuesAt: exifValuesOffset)
+        writeIFD(main, at: 8, valuesAt: 8 + mainIFDSize)
+        for o in offsets {
+            writeIFD(o.entries, at: o.ifd, valuesAt: o.values)
         }
 
         out.append(contentsOf: pixelData)
-        var data = Data(out)
-        // Keep the pixel offset we computed honest.
-        data.withUnsafeMutableBytes { _ in }
-        return data
+        return Data(out)
     }
 }
 
@@ -263,7 +258,13 @@ public enum DNGWriter {
             exif.addRaw(e.tag, type: e.type, count: e.count, data: e.data)
         }
 
-        var data = main.build(pixelData: pixelData, exif: exif)
+        let gps = TIFFBuilder()
+        for e in source.gpsTags {
+            gps.addRaw(e.tag, type: e.type, count: e.count, data: e.data)
+        }
+        var extras: [(pointerTag: UInt16, builder: TIFFBuilder)] = [(34665, exif)]
+        if !source.gpsTags.isEmpty { extras.append((34853, gps)) }
+        var data = main.build(pixelData: pixelData, extras: extras)
 
         // Patch StripOffsets: the pixel block starts right after the IFD data,
         // i.e. at (fileSize - pixelData.count).
