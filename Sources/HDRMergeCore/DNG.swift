@@ -68,6 +68,7 @@ public struct RawFrame {
     public let calibrationIlluminant2: Int
     /// Scalar EXIF tags copied verbatim from the source's Exif IFD.
     public let exifTags: [(tag: UInt16, type: UInt16, count: Int, data: [UInt8])]
+    public let dateTime: String
     public let orientation: Int
 
     public var width: Int { activeWidth }
@@ -189,7 +190,8 @@ public enum DNGReader {
         let make = metaIFDs.compactMap { $0[271]?.ascii }.first { !$0.isEmpty } ?? ""
         let model = metaIFDs.compactMap { $0[272]?.ascii }.first { !$0.isEmpty } ?? ""
         // Whitelisted scalar EXIF tags (no offsets, so they stay valid when moved).
-        let scalarExif: Set<UInt16> = [274, 305, 306, 33437, 34850, 34855, 36864, 36867, 36868,
+        let scalarExif: Set<UInt16> = [33437, 34850, 34855, 36864, 36867, 36868,
+                                       36880, 36881, 36882, 37520, 37521, 37522,
                                        37380, 37381, 37383, 37384, 37385, 37386, 37396,
                                        41986, 41987, 41989, 42033, 42034, 42035, 42036, 42037]
         var exifTags: [(tag: UInt16, type: UInt16, count: Int, data: [UInt8])] = []
@@ -224,6 +226,7 @@ public enum DNGReader {
                         calibrationIlluminant1: metaIFDs.compactMap { $0[50778]?.firstInt }.first ?? 21,
                         calibrationIlluminant2: metaIFDs.compactMap { $0[50779]?.firstInt }.first ?? 21,
                         exifTags: exifTags.sorted { $0.tag < $1.tag },
+                        dateTime: metaIFDs.compactMap { $0[306]?.ascii }.first { !$0.isEmpty } ?? "",
                         orientation: orientation)
     }
 

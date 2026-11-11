@@ -234,6 +234,7 @@ public enum DNGWriter {
 
         main.addShorts(274, [UInt16(max(1, source.orientation))])
         main.addASCII(305, "hdrmerge-swift")
+        if !source.dateTime.isEmpty { main.addASCII(306, source.dateTime) }
 
         let exif = TIFFBuilder()
         if source.exposureTime > 0 {
